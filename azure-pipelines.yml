@@ -145,6 +145,7 @@ stages:
         provider: 'azurerm'
         command: 'init'
         workingDirectory: '$(System.DefaultWorkingDirectory)/'
+        backendAzureRmUseEntraIdForAuthentication: false
         backendServiceArm: 'todo-svc'
         backendAzureRmStorageAccountName: 'patelstg'
         backendAzureRmContainerName: 'patelcont'
