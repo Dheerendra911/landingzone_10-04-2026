@@ -39,19 +39,19 @@ stages:
         command: 'validate'
         workingDirectory: '$(System.DefaultWorkingDirectory)/'
 
-  - job: TerraformFmt
-    dependsOn: TerraformValidate
-    displayName: Terraform Fmt
-    steps: 
-    - task: TerraformTask@5
-      inputs:
-        provider: 'azurerm'
-        command: 'custom'
-        workingDirectory: '$(System.DefaultWorkingDirectory)/'
-        customCommand: 'fmt'
+  # - job: TerraformFmt
+  #   dependsOn: TerraformValidate
+  #   displayName: Terraform Fmt
+  #   steps: 
+  #   - task: TerraformTask@5
+  #     inputs:
+  #       provider: 'azurerm'
+  #       command: 'custom'
+  #       workingDirectory: '$(System.DefaultWorkingDirectory)/'
+  #       customCommand: 'fmt'
 
   - job: tfsec
-    dependsOn: TerraformFmt
+    dependsOn: TerraformValidate
     displayName: TfSec Scan
     steps:
     - task: tfsec@1
