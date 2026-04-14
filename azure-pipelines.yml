@@ -1,0 +1,132 @@
+name: DkpatelInfraPipeline
+
+pool: todo-pool
+
+trigger: none 
+
+stages:
+- stage: PreCommit
+  displayName: Pre-Commit / Static Analysis Stage
+  pool: Default
+  jobs: 
+  - job: TerraformValidate
+    displayName: Terraform Validate
+    steps:
+    - task: TerraformTask@5
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/'
+        backendServiceArm: 'todo-svc'
+        backendAzureRmStorageAccountName: 'patelstg'
+        backendAzureRmContainerName: 'patelstg'
+        backendAzureRmKey: 'tfstate-key'
+    - task: TerraformTask@5
+      inputs:
+        provider: 'azurerm'
+        command: 'validate'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/'
+  - job: TerraformFmt
+    dependsOn: TerraformValidate
+    displayName: Terraform Fmt
+    steps: 
+    - task: TerraformTask@5
+      inputs:
+        provider: 'azurerm'
+        command: 'custom'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/'
+        outputTo: 'console'
+        customCommand: 'fmt'
+        environmentServiceNameAzureRM: 'todo-svc'
+  - job: tfsec
+    dependsOn: TerraformFmt
+    displayName: TfSec Scan
+    steps:
+    - task: tfsec@1
+      inputs:
+        version: 'v1.26.0'
+        dir: '$(System.DefaultWorkingDirectory)/'
+  - job: tflint
+    dependsOn: tfsec
+    displayName: TFLint
+    steps: 
+    - task: PowerShell@2
+      continueOnError: true
+      inputs:
+        targetType: 'inline'
+        script: |
+          winget install TerraformLinters.tflint     
+          ls   
+          tflint
+        errorActionPreference: 'continue'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/'
+
+- stage: costStage
+  dependsOn: PreCommit
+  displayName: Cost & Impact Assessment Stage
+  jobs: 
+  - job: InfraCost
+    displayName: InfraCost
+    steps:
+    - task: PowerShell@2
+      inputs:
+        targetType: 'inline'
+        script: 'infracost breakdown --path=.'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/'
+- stage: plan
+  displayName: Plan & Review Stage
+  jobs: 
+  - job: TerraformPlan
+    displayName: Terraform Plan
+    pool: todo-pool
+    steps:
+    - task: TerraformTask@5
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/'
+        backendServiceArm: 'todo-svc'
+        backendAzureRmStorageAccountName: 'patelstg'
+        backendAzureRmContainerName: 'patelcont'
+        backendAzureRmKey: 'tfstate_key'
+    - task: TerraformTask@5
+      inputs:
+        provider: 'azurerm'
+        command: 'plan'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/'
+        environmentServiceNameAzureRM: 'todo-svc'
+- stage: approval
+  dependsOn: plan
+  displayName: Approval & Governance Stage
+  jobs:
+  - job: ManualApproval
+    displayName: Manual Approval
+    pool: server
+    steps: 
+    - task: ManualValidation@1
+      inputs:
+        notifyUsers: 'dkpatel111@outlook.com'
+- stage: apply
+  dependsOn: approval
+  displayName: Deploy / Apply Stage
+  jobs:
+  - job: TerraformApply
+    displayName: Terraform Apply
+    pool: todo-pool
+    steps: 
+      - task: TerraformTask@5
+        inputs:
+          provider: 'azurerm'
+          command: 'init'
+          workingDirectory: '$(System.DefaultWorkingDirectory)/'
+          backendServiceArm: 'todo-svc'
+          backendAzureRmStorageAccountName: 'patelstg'
+          backendAzureRmContainerName: 'patelcont'
+          backendAzureRmKey: 'tfstate_key'
+      - task: TerraformTask@5
+        inputs:
+          provider: 'azurerm'
+          command: 'apply'
+          workingDirectory: '$(System.DefaultWorkingDirectory)/'
+          commandOptions: '-auto-approve'
+          environmentServiceNameAzureRM: 'todo-svc'
