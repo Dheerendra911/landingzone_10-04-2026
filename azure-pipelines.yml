@@ -7,7 +7,7 @@ trigger: none
 stages:
 - stage: PreCommit
   displayName: Pre-Commit / Static Analysis Stage
-  pool: Default
+  pool: todo-pool
   jobs: 
   - job: TerraformValidate
     displayName: Terraform Validate
@@ -64,6 +64,7 @@ stages:
 - stage: costStage
   dependsOn: PreCommit
   displayName: Cost & Impact Assessment Stage
+  pool: todo-pool
   jobs: 
   - job: InfraCost
     displayName: InfraCost
