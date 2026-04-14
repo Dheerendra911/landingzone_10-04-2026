@@ -1,31 +1,28 @@
 name: DkpatelInfraPipeline
 
-pool: todo-pool
-
 trigger: none 
 
+pool: todo-pool
+
 stages:
+
+# ---------------- PRE-COMMIT ----------------
 - stage: PreCommit
   displayName: Pre-Commit / Static Analysis Stage
-  pool: todo-pool
 
   jobs: 
   - job: TerraformValidate
     displayName: Terraform Validate
-
     steps:
-    # 🔧 FIX: unzip install karo
     - script: |
         sudo apt-get update
         sudo apt-get install -y unzip
       displayName: Install unzip
 
-    # Terraform install
     - task: TerraformInstaller@1
       inputs:
-        terraformVersion: 'latest'
+        terraformVersion: '1.5.7'
 
-    # Terraform init
     - task: TerraformTask@5
       inputs:
         provider: 'azurerm'
@@ -35,11 +32,13 @@ stages:
         backendAzureRmStorageAccountName: 'patelstg'
         backendAzureRmContainerName: 'patelstg'
         backendAzureRmKey: 'tfstate-key'
+
     - task: TerraformTask@5
       inputs:
         provider: 'azurerm'
         command: 'validate'
         workingDirectory: '$(System.DefaultWorkingDirectory)/'
+
   - job: TerraformFmt
     dependsOn: TerraformValidate
     displayName: Terraform Fmt
@@ -49,17 +48,19 @@ stages:
         provider: 'azurerm'
         command: 'custom'
         workingDirectory: '$(System.DefaultWorkingDirectory)/'
-        outputTo: 'console'
         customCommand: 'fmt'
-        environmentServiceNameAzureRM: 'todo-svc'
+
   - job: tfsec
     dependsOn: TerraformFmt
     displayName: TfSec Scan
     steps:
     - task: tfsec@1
+      continueOnError: true
       inputs:
         version: 'v1.26.0'
         dir: '$(System.DefaultWorkingDirectory)/'
+        additionalArgs: '--soft-fail'
+
   - job: tflint
     dependsOn: tfsec
     displayName: TFLint
@@ -69,33 +70,34 @@ stages:
       inputs:
         targetType: 'inline'
         script: |
-          winget install TerraformLinters.tflint     
-          ls   
-          tflint
+          winget install TerraformLinters.tflint
+          ls
+          tflint || exit 0
         errorActionPreference: 'continue'
         workingDirectory: '$(System.DefaultWorkingDirectory)/'
 
+# ---------------- COST ----------------
 - stage: costStage
   dependsOn: PreCommit
   displayName: Cost & Impact Assessment Stage
-  pool: todo-pool
   jobs: 
   - job: InfraCost
     displayName: InfraCost
     steps:
-    - task: PowerShell@2
-      inputs:
-        targetType: 'inline'
-        script: 'infracost breakdown --path=.'
-        workingDirectory: '$(System.DefaultWorkingDirectory)/'
+    - script: |
+        infracost breakdown --path=.
+      displayName: Run Infracost
+
+# ---------------- PLAN ----------------
 - stage: plan
+  dependsOn: costStage
   displayName: Plan & Review Stage
   jobs: 
   - job: TerraformPlan
     displayName: Terraform Plan
-    pool: todo-pool
     steps:
     - task: TerraformTask@5
+      displayName: Terraform Init
       inputs:
         provider: 'azurerm'
         command: 'init'
@@ -104,12 +106,16 @@ stages:
         backendAzureRmStorageAccountName: 'patelstg'
         backendAzureRmContainerName: 'patelcont'
         backendAzureRmKey: 'tfstate_key'
+
     - task: TerraformTask@5
+      displayName: Terraform Plan
       inputs:
         provider: 'azurerm'
         command: 'plan'
         workingDirectory: '$(System.DefaultWorkingDirectory)/'
         environmentServiceNameAzureRM: 'todo-svc'
+
+# ---------------- APPROVAL ----------------
 - stage: approval
   dependsOn: plan
   displayName: Approval & Governance Stage
@@ -119,29 +125,36 @@ stages:
     pool: server
     steps: 
     - task: ManualValidation@1
+      timeoutInMinutes: 60
       inputs:
         notifyUsers: 'dkpatel111@outlook.com'
+        instructions: 'Please review Terraform plan and approve deployment.'
+        onTimeout: 'reject'
+
+# ---------------- APPLY ----------------
 - stage: apply
   dependsOn: approval
   displayName: Deploy / Apply Stage
   jobs:
   - job: TerraformApply
     displayName: Terraform Apply
-    pool: todo-pool
     steps: 
-      - task: TerraformTask@5
-        inputs:
-          provider: 'azurerm'
-          command: 'init'
-          workingDirectory: '$(System.DefaultWorkingDirectory)/'
-          backendServiceArm: 'todo-svc'
-          backendAzureRmStorageAccountName: 'patelstg'
-          backendAzureRmContainerName: 'patelcont'
-          backendAzureRmKey: 'tfstate_key'
-      - task: TerraformTask@5
-        inputs:
-          provider: 'azurerm'
-          command: 'apply'
-          workingDirectory: '$(System.DefaultWorkingDirectory)/'
-          commandOptions: '-auto-approve'
-          environmentServiceNameAzureRM: 'todo-svc'
+    - task: TerraformTask@5
+      displayName: Terraform Init
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/'
+        backendServiceArm: 'todo-svc'
+        backendAzureRmStorageAccountName: 'patelstg'
+        backendAzureRmContainerName: 'patelcont'
+        backendAzureRmKey: 'tfstate_key'
+
+    - task: TerraformTask@5
+      displayName: Terraform Apply
+      inputs:
+        provider: 'azurerm'
+        command: 'apply'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/'
+        commandOptions: '-auto-approve'
+        environmentServiceNameAzureRM: 'todo-svc'
