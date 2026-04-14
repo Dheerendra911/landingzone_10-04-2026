@@ -85,16 +85,17 @@ stages:
     displayName: InfraCost
     steps:
 
-    # 🔧 Install Infracost
+    # Install Infracost
     - script: |
         curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
       displayName: Install Infracost
 
-    # 💰 Run Infracost
+    # Run Infracost (correct env usage)
     - script: |
-        export INFRACOST_API_KEY=$(INFRACOST_API_KEY)
         infracost breakdown --path=.
       displayName: Run Infracost
+      env:
+        INFRACOST_API_KEY: $(INFRACOST_API_KEY)
 
 # ---------------- PLAN ----------------
 - stage: plan
