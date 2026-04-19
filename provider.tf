@@ -1,4 +1,11 @@
 terraform {
+  backend "azurerm" {
+    resource_group_name = "dk_rg"
+    storage_account_name = "patelstg"
+    container_name = "patelcont"
+    key = "dk.tfstate"
+    
+  }
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
